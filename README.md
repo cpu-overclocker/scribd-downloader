@@ -1,4 +1,4 @@
-# 📚 Scribd Bulk Downloader
+# 📚 Scribd Downloader
 
 A Python tool to bulk-download Scribd documents as high-quality PDFs.
 Uses Selenium + Chrome DevTools Protocol to bypass the paywall via the official
