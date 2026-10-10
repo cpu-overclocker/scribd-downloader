@@ -78,7 +78,6 @@ PDFs are written to:
 
 ```
 ~/ScribdDownloads/
-├── Tech.pdf
 ├── Another-Document.pdf
 ├── scribd_bulk.log
 └── failed_urls.txt     # only if some URLs failed
