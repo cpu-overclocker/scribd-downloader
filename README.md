@@ -124,14 +124,6 @@ Common issues:
 
 ---
 
-## 🤝 Contributing
-
-Pull requests are welcome. For major changes, open an issue first.
-
-## 📜 License
-
-[MIT](LICENSE)
-
 ## ⭐ Star history
 
 If this project helps you, consider giving it a star — it motivates further work.
