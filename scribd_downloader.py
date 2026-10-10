@@ -16,9 +16,9 @@ from PIL import Image
 # ============================================================
 #  CONFIGURATION
 # ============================================================
-HEADLESS_ENABLED = True     # False pour voir Chrome
-CAPTURE_SCALE = 2           # 1 = rapide, 2 = qualité, 3 = très lourd
-RESTART_BROWSER_EVERY = 5   # Redémarre Chrome tous les N documents (évite fuites mémoire)
+HEADLESS_ENABLED = True     # False to see Chrome
+CAPTURE_SCALE = 2           # 1 = fast, 2 = quality, 3 = very heavy
+RESTART_BROWSER_EVERY = 5   # Restart Chrome every N documents (avoids memory leaks)
 DEFAULT_PAGE_LOAD_TIMEOUT_SECONDS = 120
 DEFAULT_PAGE_LOAD_CONCURRENCY = 8
 OUTPUT_DIR = os.path.join(os.path.expanduser("~"), "ScribdDownloads")
@@ -27,7 +27,7 @@ LOG_FILE = os.path.join(OUTPUT_DIR, "scribd_bulk.log")
 
 
 def log(msg, also_print=True):
-    """Écrit dans le log + sur la console."""
+    """Write to the log file + console."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     line = f"[{timestamp}] {msg}"
     if also_print:
@@ -68,7 +68,7 @@ def get_filename_from_url(url):
     path = parsed.path.rstrip("/")
     last_segment = path.split("/")[-1] if path else "scribd_document"
     last_segment = unquote(last_segment)
-    # Nettoie les caractères interdits Windows
+    # Sanitize forbidden Windows characters
     last_segment = re.sub(r'[\\/:*?"<>|]', '_', last_segment)[:150]
     return f"{last_segment}.pdf"
 
@@ -86,7 +86,7 @@ def hide_cookie_dialogs(driver):
 
 
 def load_all_pages(driver):
-    """Charge toutes les pages via window.docManager. Retourne le nombre de pages."""
+    """Load all pages via window.docManager. Returns the number of pages."""
     page_count = driver.execute_script("""
         return (typeof window.docManager !== 'undefined'
                 && window.docManager !== null
@@ -200,21 +200,21 @@ def unique_path(path):
 
 def process_one_document(driver, scribd_url):
     """
-    Traite un document. Retourne (ok, message).
+    Process one document. Returns (ok, message).
     """
     embed_url = convert_scribd_link(scribd_url)
     if not embed_url:
-        return False, "URL Scribd invalide"
+        return False, "Invalid Scribd URL"
 
     filename = get_filename_from_url(scribd_url)
     filename = unique_path(os.path.join(OUTPUT_DIR, filename))
 
-    # Chargement
+    # Loading
     driver.get(embed_url)
     time.sleep(3)
     hide_cookie_dialogs(driver)
 
-    # Attente docManager
+    # Wait for docManager
     for _ in range(30):
         ready = driver.execute_script("""
             return (typeof window.docManager !== 'undefined'
@@ -225,15 +225,15 @@ def process_one_document(driver, scribd_url):
             break
         time.sleep(1)
     else:
-        return False, "docManager non détecté"
+        return False, "docManager not detected"
 
-    # Charger toutes les pages
+    # Load all pages
     loaded = load_all_pages(driver)
     if loaded == 0:
-        return False, "aucune page chargée"
+        return False, "no pages loaded"
     time.sleep(2)
 
-    # Récupérer les éléments de page
+    # Get page elements
     page_elements = driver.find_elements(By.CSS_SELECTOR, ".outer_page")
     if not page_elements:
         for sel in ["div[id^='page']", ".newpage", "div.page"]:
@@ -244,9 +244,9 @@ def process_one_document(driver, scribd_url):
                 break
 
     if not page_elements:
-        return False, "aucun élément de page trouvé"
+        return False, "no page elements found"
 
-    # Capturer
+    # Capture
     images = []
     for i, el in enumerate(page_elements):
         try:
@@ -256,28 +256,28 @@ def process_one_document(driver, scribd_url):
             if img:
                 images.append(img)
         except Exception as e:
-            log(f"      ⚠️ page {i+1} échouée : {e}", also_print=False)
+            log(f"      ⚠️ page {i+1} failed: {e}", also_print=False)
 
     if not images:
-        return False, "aucune image capturée"
+        return False, "no images captured"
 
-    # Fusion
+    # Merge
     try:
         first, rest = images[0], images[1:]
         first.save(filename, "PDF", save_all=True, append_images=rest)
     except Exception as e:
-        return False, f"erreur écriture : {e}"
+        return False, f"write error: {e}"
 
     size_kb = os.path.getsize(filename) / 1024
-    return True, f"{len(images)} pages, {size_kb:.0f} Ko → {os.path.basename(filename)}"
+    return True, f"{len(images)} pages, {size_kb:.0f} KB → {os.path.basename(filename)}"
 
 
 def run_bulk(urls):
-    """Traite une liste d'URLs."""
+    """Process a list of URLs."""
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     log("=" * 60)
     log(f"🚀 BULK EXPORT — {len(urls)} document(s)")
-    log(f"📁 Dossier de sortie : {OUTPUT_DIR}")
+    log(f"📁 Output folder: {OUTPUT_DIR}")
     log("=" * 60)
 
     ok_count = 0
@@ -294,10 +294,10 @@ def run_bulk(urls):
             if not url or url.startswith("#"):
                 continue
 
-            # Redémarrage périodique du navigateur
+            # Periodically restart the browser
             if driver is None or processed_since_restart >= RESTART_BROWSER_EVERY:
                 if driver is not None:
-                    log(f"   🔄 Redémarrage du navigateur (mémoire)...")
+                    log(f"   🔄 Restarting browser (memory)...")
                     try:
                         driver.quit()
                     except Exception:
@@ -311,7 +311,7 @@ def run_bulk(urls):
             try:
                 ok, msg = process_one_document(driver, url)
             except Exception as e:
-                ok, msg = False, f"exception : {e}"
+                ok, msg = False, f"exception: {e}"
 
             if ok:
                 ok_count += 1
@@ -320,7 +320,7 @@ def run_bulk(urls):
                 fail_count += 1
                 failures.append((url, msg))
                 log(f"   ❌ {msg}")
-                # En cas d'erreur grave, on redémarre le navigateur
+                # On serious error, restart the browser
                 try:
                     driver.quit()
                 except Exception:
@@ -340,27 +340,27 @@ def run_bulk(urls):
 
     elapsed = time.time() - start_time
     log("\n" + "=" * 60)
-    log(f"📊 RÉSUMÉ : {ok_count} ✅ / {fail_count} ❌  ({elapsed:.0f}s)")
+    log(f"📊 SUMMARY: {ok_count} ✅ / {fail_count} ❌  ({elapsed:.0f}s)")
     log("=" * 60)
 
     if failures:
-        log("\n❌ Échecs :")
+        log("\n❌ Failures:")
         for url, msg in failures:
             log(f"   • {url}\n     → {msg}")
 
-    # Fichier des échecs pour relance
+    # Failure file for retry
     if failures:
         fail_file = os.path.join(OUTPUT_DIR, "failed_urls.txt")
         with open(fail_file, "w", encoding="utf-8") as f:
             for url, _ in failures:
                 f.write(url + "\n")
-        log(f"\n💡 Liens échoués sauvegardés dans : {fail_file}")
-        log("   → Relancez le script avec ce fichier pour réessayer.")
+        log(f"\n💡 Failed links saved to: {fail_file}")
+        log("   → Run the script again with this file to retry.")
 
 
 def read_urls_interactive():
-    """Demande les URLs à l'utilisateur, une par ligne. Ligne vide = fin."""
-    print("Collez les liens Scribd (un par ligne). Ligne vide pour terminer.")
+    """Ask the user for URLs, one per line. Empty line = end."""
+    print("Paste Scribd links (one per line). Empty line to finish.")
     print("-" * 60)
     urls = []
     while True:
@@ -384,36 +384,36 @@ def main():
     print("       📚 SCRIBD BULK DOWNLOADER 📚")
     print("=" * 60)
     print()
-    print("1. Saisir les liens manuellement")
-    print("2. Charger depuis un fichier .txt")
+    print("1. Enter link(s) manually")
+    print("2. Load from a .txt file")
     print()
 
-    choice = input("Choix [1/2] : ").strip()
+    choice = input("Choice [1/2]: ").strip()
 
     if choice == "2":
-        path = input("Chemin du fichier .txt : ").strip().strip('"')
+        path = input("Path to .txt file: ").strip().strip('"')
         if not os.path.isfile(path):
-            print(f"❌ Fichier introuvable : {path}")
+            print(f"❌ File not found: {path}")
             return
         urls = read_urls_from_file(path)
         if not urls:
-            print("❌ Aucun lien dans le fichier.")
+            print("❌ No links found in file.")
             return
     else:
         urls = read_urls_interactive()
 
     if not urls:
-        print("❌ Aucun lien fourni.")
+        print("❌ No links provided.")
         return
 
-    print(f"\n✅ {len(urls)} lien(s) à traiter.")
-    confirm = input("Lancer ? [O/n] : ").strip().lower()
-    if confirm and confirm != "o":
-        print("Annulé.")
+    print(f"\n✅ {len(urls)} link(s) to process.")
+    confirm = input("Start? [Y/n]: ").strip().lower()
+    if confirm and confirm != "y":
+        print("Cancelled.")
         return
 
     run_bulk(urls)
-    input("\n⏸️  Entrée pour quitter...")
+    input("\n⏸️  Press Enter to quit...")
 
 
 if __name__ == "__main__":
